@@ -40,3 +40,6 @@ htmlcov/
 logs/
 downloads/
 *.log
+
+.vercel
+.env*.local
