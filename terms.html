@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Terms and Conditions | Universal Video Downloader</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    .terms-container {
+      max-width: 800px;
+      margin: 80px auto;
+      padding: 40px;
+      line-height: 1.8;
+    }
+    .terms-container h1 { font-size: 36px; margin-bottom: 24px; }
+    .terms-container h2 { font-size: 24px; margin-top: 40px; margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px; }
+    .terms-container p { margin-bottom: 16px; color: var(--text-secondary); }
+    .terms-container ul { margin-left: 24px; margin-bottom: 16px; color: var(--text-secondary); }
+    .terms-container li { margin-bottom: 8px; }
+    .back-btn { margin-bottom: 30px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--accent); }
+    .back-btn:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-content">
+    <div class="logo">⚡ UniversalSave</div>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <button id="themeToggle" class="theme-toggle" aria-label="Toggle Theme">
+        <svg id="themeIcon" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"></svg>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<main class="terms-container glass-panel">
+  <a href="/" class="back-btn"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg> Back to Home</a>
+  
+  <h1>Terms and Conditions</h1>
+  <p><strong>Last Updated:</strong> April 2026</p>
+
+  <p>Welcome to UniversalSave. By accessing or using our service, you agree to be bound by these Terms and Conditions. If you disagree with any part of these terms, you may not use our service.</p>
+
+  <h2>1. Use of Service</h2>
+  <p>UniversalSave provides a tool intended solely for educational and personal use. By providing a URL, you acknowledge that you have the right to download the content specified.</p>
+  <ul>
+    <li>You must not use our service to download copyrighted material without the express permission of the copyright owner.</li>
+    <li>We do not host or store any of the media files passing through our servers.</li>
+    <li>Our service acts exclusively as a conduit connecting you to third-party file sources.</li>
+  </ul>
+
+  <h2>2. Liability & Warranty</h2>
+  <p>The tool is provided "as is", without warranty of any kind. UniversalSave developers take no responsibility for the actions of our users. We shall not be liable for any damages, legal issues, or copyright infringement claims resulting from the abuse of our tool.</p>
+
+  <h2>3. Privacy</h2>
+  <p>We respect your privacy. UniversalSave does not store logs of media downloaded by users. Downloaded files are transient and processed securely.</p>
+
+  <h2>4. Changes to Terms</h2>
+  <p>We reserve the right to modify these Terms at any time. Changes take immediate effect upon being published on this page.</p>
+</main>
+
+<footer>
+  <p>&copy; 2026 UniversalSave Downloader. All rights reserved.</p>
+</footer>
+
+<script>
+  const themeToggle = document.getElementById('themeToggle');
+  const themeIcon = document.getElementById('themeIcon');
+  const moonIcon = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+  const sunIcon = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
+  const currentTheme = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  themeIcon.innerHTML = currentTheme === 'dark' ? sunIcon : moonIcon;
+  themeToggle.addEventListener('click', () => {
+    let theme = document.documentElement.getAttribute('data-theme');
+    let newTheme = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    themeIcon.innerHTML = newTheme === 'dark' ? sunIcon : moonIcon;
+  });
+</script>
+</body>
+</html>
