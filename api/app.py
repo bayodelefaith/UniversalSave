@@ -18,8 +18,6 @@ app.add_middleware(
 )
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-# On Vercel, __file__ is  /var/task/api/index.py
-# So the project root (where index.html lives) is one level up.
 BASE_DIR     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOWNLOAD_DIR = "/tmp/UniversalVideoDownloader"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -27,7 +25,29 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 # ── In-memory state ───────────────────────────────────────────────────────────
 download_status: dict = {}
 search_cache:    dict = {}
-CACHE_TTL = 300          # seconds
+CACHE_TTL = 300  # seconds
+
+# ── Common yt-dlp options (spoof a real browser to avoid bot detection) ───────
+COMMON_OPTS = {
+    "quiet":       True,
+    "no_warnings": True,
+    "http_headers": {
+        "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection":      "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest":  "document",
+        "Sec-Fetch-Mode":  "navigate",
+        "Sec-Fetch-Site":  "none",
+        "Sec-Fetch-User":  "?1",
+    }, 
+    # Use cookies file if present (place cookies.txt inside the api/ folder)
+    "cookiefile": os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+                  if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt"))
+                  else None,
+}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -36,7 +56,9 @@ CACHE_TTL = 300          # seconds
 
 def get_video_info_sync(url: str) -> dict:
     """Return approximate file-sizes (MB) for each quality tier."""
-    ydl_opts = {"quiet": True, "no_warnings": True}
+    ydl_opts = {
+        **COMMON_OPTS,
+    }
     size_map = {"best": None, "720p": None, "480p": None, "360p": None, "audio": None}
 
     try:
@@ -74,7 +96,9 @@ def get_video_info_sync(url: str) -> dict:
 
 def fetch_video_by_url_sync(url: str) -> dict | None:
     """Fetch metadata for a single video URL."""
-    ydl_opts = {"quiet": True, "no_warnings": True}
+    ydl_opts = {
+        **COMMON_OPTS,
+    }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -116,8 +140,7 @@ def scrape_youtube_sync(query: str) -> list:
 
     results  = []
     ydl_opts = {
-        "quiet":          True,
-        "no_warnings":    True,
+        **COMMON_OPTS,
         "extract_flat":   True,
         "default_search": "ytsearch10",
     }
@@ -183,12 +206,11 @@ def download_video_task(video_id: str, url: str, quality: str) -> None:
     }
 
     ydl_opts = {
+        **COMMON_OPTS,
         "format":         format_map.get(quality, format_map["best"]),
         "outtmpl":        os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
         "progress_hooks": [progress_hook],
-        "quiet":          True,
         "noplaylist":     True,
-        # Merge video+audio into a single mp4 when separate streams are selected
         "postprocessors": [
             {
                 "key":            "FFmpegVideoConvertor",
@@ -255,12 +277,14 @@ async def video_sizes(urls: str = Query(..., description="Comma-separated video 
     loop     = asyncio.get_event_loop()
 
     async def fetch_one(url: str):
-        # Derive a stable key that the frontend can match
         if "v=" in url:
             vid_id = url.split("v=")[1].split("&")[0]
         else:
             try:
-                ydl_opts = {"quiet": True, "no_warnings": True, "extract_flat": True}
+                ydl_opts = {
+                    **COMMON_OPTS,
+                    "extract_flat": True,
+                }
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info   = ydl.extract_info(url, download=False)
                     vid_id = info.get("id", url)
@@ -282,7 +306,6 @@ async def download_video(
     background_tasks: BackgroundTasks,
     quality:          str = "best",
 ):
-    # Prevent duplicate downloads
     if (
         id in download_status
         and download_status[id].get("status") == "downloading"
@@ -301,7 +324,6 @@ def get_progress(id: str):
 
 @app.get("/health")
 def health_check():
-    """Simple health-check endpoint."""
     return {"status": "ok"}
 
 
