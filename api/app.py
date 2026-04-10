@@ -1,7 +1,6 @@
 import os
 import re
 import asyncio
-import subprocess
 import requests
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, FileResponse
@@ -16,6 +15,13 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
+# Try to import chromium-binary for serverless
+try:
+    import chromium_binary
+    CHROMIUM_BINARY_AVAILABLE = True
+except ImportError:
+    CHROMIUM_BINARY_AVAILABLE = False
+
 app = FastAPI()
 
 app.add_middleware(
@@ -27,7 +33,7 @@ app.add_middleware(
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Set Playwright browsers path for Render
+# Set Playwright browsers path
 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/.cache/ms-playwright"
 
 INVIDIOUS_INSTANCES = [
@@ -78,28 +84,69 @@ def get_platform(url: str) -> tuple:
 
 def find_chromium_executable():
     """
-    Find the actual Chromium executable path.
-    Playwright 1.58+ uses chromium-headless-shell with different paths.
+    Find Chromium executable using multiple methods.
+    Priority: chromium-binary > playwright headless shell > playwright chromium > system chromium
     """
-    possible_paths = [
-        # Headless shell (new in 1.58+)
+    # Method 1: Use chromium-binary package (most reliable for serverless)
+    if CHROMIUM_BINARY_AVAILABLE:
+        try:
+            chromium_path = chromium_binary.chromium_path
+            if chromium_path and os.path.exists(chromium_path):
+                print(f"✅ Using chromium-binary: {chromium_path}")
+                return chromium_path
+        except:
+            pass
+    
+    # Method 2: Playwright headless shell (1.58+)
+    headless_paths = [
         "/opt/render/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell",
-        "/opt/render/.cache/ms-playwright/chromium_headless_shell-1208/chrome-linux64/chrome-headless-shell",
-        # Regular Chromium
+        "/opt/render/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell",
+        os.path.expanduser("~/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell"),
+        os.path.expanduser("~/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"),
+    ]
+    
+    for path in headless_paths:
+        if os.path.exists(path):
+            print(f"✅ Found Playwright headless shell: {path}")
+            return path
+    
+    # Method 3: Regular Playwright Chromium
+    chromium_paths = [
         "/opt/render/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
-        "/opt/render/.cache/ms-playwright/chromium-1208/chrome-linux/chrome",
-        # Fallback to system chromium
+        "/opt/render/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome",
+        os.path.expanduser("~/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome"),
+        os.path.expanduser("~/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome"),
+    ]
+    
+    for path in chromium_paths:
+        if os.path.exists(path):
+            print(f"✅ Found Playwright Chromium: {path}")
+            return path
+    
+    # Method 4: System Chromium
+    system_paths = [
         "/usr/bin/chromium",
         "/usr/bin/chromium-browser",
         "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
     ]
     
-    for path in possible_paths:
+    for path in system_paths:
         if os.path.exists(path):
-            print(f"✅ Found Chromium at: {path}")
+            print(f"✅ Found system Chromium: {path}")
             return path
     
-    # If not found, return None and let Playwright try to find it
+    # Method 5: Try to find any chromium in PATH
+    try:
+        import shutil
+        chromium_in_path = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+        if chromium_in_path:
+            print(f"✅ Found Chromium in PATH: {chromium_in_path}")
+            return chromium_in_path
+    except:
+        pass
+    
+    print("❌ No Chromium found")
     return None
 
 async def scrape_with_playwright(url: str, platform: str) -> dict:
@@ -108,6 +155,9 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
         return {"error": "Playwright not installed"}
     
     chromium_path = find_chromium_executable()
+    
+    if not chromium_path:
+        return {"error": "Chromium not found. Please install chromium-binary or run: python -m playwright install chromium"}
     
     try:
         async with async_playwright() as p:
@@ -127,23 +177,20 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
                 ]
             }
             
-            # Use explicit path if found
-            if chromium_path:
-                launch_options["executable_path"] = chromium_path
+            # Use explicit path
+            launch_options["executable_path"] = chromium_path
+            
+            # Check if using headless shell (new in 1.58+)
+            if "headless_shell" in chromium_path or "headless-shell" in chromium_path:
+                print("🚀 Using Chromium Headless Shell (optimized for serverless)")
+            else:
+                print("🚀 Using regular Chromium")
             
             try:
                 browser = await p.chromium.launch(**launch_options)
             except Exception as launch_error:
-                error_msg = str(launch_error)
-                print(f"❌ Browser launch failed: {error_msg}")
-                
-                # If executable not found, try without specifying path
-                if "Executable doesn't exist" in error_msg and chromium_path:
-                    print("🔄 Retrying without explicit executable_path...")
-                    del launch_options["executable_path"]
-                    browser = await p.chromium.launch(**launch_options)
-                else:
-                    raise launch_error
+                print(f"❌ Launch failed: {launch_error}")
+                return {"error": f"Failed to launch browser: {str(launch_error)}"}
             
             context = await browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -159,8 +206,15 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
             """)
             
             page = await context.new_page()
-            await page.goto(url, wait_until='networkidle', timeout=30000)
-            await asyncio.sleep(2)
+            
+            # Navigate with longer timeout for slow loading
+            try:
+                await page.goto(url, wait_until='networkidle', timeout=45000)
+            except:
+                # Fallback to domcontentloaded if networkidle times out
+                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            
+            await asyncio.sleep(3)  # Wait for JS to execute
             
             result = {}
             
@@ -181,6 +235,7 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
                 }''')
                 
                 if not result.get('videoUrl'):
+                    # Try ytInitialPlayerResponse
                     player_response = await page.evaluate('''() => {
                         const scripts = Array.from(document.querySelectorAll('script'));
                         const playerScript = scripts.find(s => s.textContent.includes('ytInitialPlayerResponse'));
@@ -225,9 +280,8 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
                 return {"error": f"Could not extract video URL from {platform}"}
                 
     except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Playwright error: {error_msg}")
-        return {"error": f"Browser automation failed: {error_msg}"}
+        print(f"❌ Playwright error: {e}")
+        return {"error": f"Browser automation failed: {str(e)}"}
 
 def fetch_from_invidious(video_id: str) -> dict:
     """Fallback to Invidious API"""
@@ -386,12 +440,27 @@ def get_progress(id: str):
 def health_check():
     chromium_path = find_chromium_executable()
     
+    # List all files in playwright cache for debugging
+    cache_files = []
+    try:
+        import glob
+        patterns = [
+            "/opt/render/.cache/ms-playwright/**/chrome*",
+            os.path.expanduser("~/.cache/ms-playwright/**/chrome*"),
+        ]
+        for pattern in patterns:
+            cache_files.extend(glob.glob(pattern, recursive=True))
+    except:
+        pass
+    
     return {
         "status": "ok",
         "playwright_available": PLAYWRIGHT_AVAILABLE,
+        "chromium_binary_available": CHROMIUM_BINARY_AVAILABLE,
         "chromium_found": chromium_path is not None,
         "chromium_path": chromium_path,
         "playwright_browsers_path": os.environ.get("PLAYWRIGHT_BROWSERS_PATH"),
+        "cache_dir_listing": cache_files[:10],  # First 10 matches
         "supported_platforms": list(PLATFORM_PATTERNS.keys())
     }
 
