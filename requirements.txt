@@ -1,4 +1,6 @@
 fastapi
-yt-dlp
 uvicorn
 python-multipart
+requests>=2.31.0
+youtube-search-python>=1.6.6
+playwright>=1.40.0

@@ -4,11 +4,156 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Universal Video Downloader - Fast, Free & Secure</title>
-  <meta name="description" content="Download videos from popular platforms including YouTube, TikTok, Twitter, Instagram and more. Fast, free, and secure online video downloader.">
+  <meta name="description" content="Download videos from YouTube, TikTok, Twitter, Instagram and more using advanced browser automation. Fast, free, and secure.">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="style.css"/>
   <style>
-    /* ── URL mode pill shown beside the input ── */
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --secondary: #06b6d4;
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+      --glass: rgba(30, 41, 59, 0.7);
+    }
+
+    [data-theme="light"] {
+      --bg: #ffffff;
+      --surface: #f1f5f9;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #cbd5e1;
+      --glass: rgba(255, 255, 255, 0.8);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .navbar {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      background: var(--glass);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      z-index: 1000;
+    }
+
+    .nav-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.3s;
+    }
+
+    .nav-links a:hover {
+      color: var(--primary);
+    }
+
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .theme-toggle:hover {
+      background: var(--surface);
+    }
+
+    .hero {
+      padding: 8rem 2rem 4rem;
+      text-align: center;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 3.5rem;
+      font-weight: 800;
+      margin-bottom: 1rem;
+      line-height: 1.2;
+    }
+
+    .text-gradient {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-subtitle {
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    .search-bar {
+      display: flex;
+      gap: 0.5rem;
+      background: var(--surface);
+      padding: 0.5rem;
+      border-radius: 1rem;
+      border: 1px solid var(--border);
+      margin-bottom: 1rem;
+      position: relative;
+    }
+
+    .search-bar input {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--text);
+      padding: 1rem;
+      font-size: 1rem;
+      outline: none;
+    }
+
+    .search-bar input::placeholder {
+      color: var(--text-muted);
+    }
+
     #urlPill {
       display: none;
       align-items: center;
@@ -23,19 +168,426 @@
       animation: fadeIn .3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
     }
-    #urlPill.visible { display: flex; }
-    @keyframes fadeIn { from { opacity: 0; transform: scale(.8); } to { opacity: 1; transform: scale(1); } }
 
-    /* ── hint text under the search bar ── */
+    #urlPill.visible { display: flex; }
+
+    @keyframes fadeIn { 
+      from { opacity: 0; transform: scale(.8); } 
+      to { opacity: 1; transform: scale(1); } 
+    }
+
     .search-hint {
       text-align: center;
       font-size: 14px;
-      color: #94a3b8;
+      color: var(--text-muted);
       margin-top: 12px;
       font-weight: 500;
       transition: color .3s;
     }
-    .search-hint.url-mode { color: #38bdf8; }
+
+    .search-hint.url-mode { color: var(--secondary); }
+
+    button {
+      background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      white-space: nowrap;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px -10px var(--primary);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .main-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    #status {
+      text-align: center;
+      padding: 1rem;
+      margin-bottom: 2rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+    }
+
+    #status.error {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--error);
+      border: 1px solid var(--error);
+    }
+
+    #status.success {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+
+    #status.loading {
+      color: var(--secondary);
+    }
+
+    .spinner {
+      display: none;
+      width: 40px;
+      height: 40px;
+      margin: 2rem auto;
+      border: 4px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    #results {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 4rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      overflow: hidden;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.3);
+    }
+
+    .card img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      background: var(--bg);
+    }
+
+    .card-info {
+      padding: 1.5rem;
+    }
+
+    .card-info h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .card-meta {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    .tag {
+      background: var(--bg);
+      color: var(--text-muted);
+      padding: 0.25rem 0.75rem;
+      border-radius: 2rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .tag.method {
+      background: linear-gradient(135deg, var(--success), #059669);
+      color: white;
+    }
+
+    .card-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .action-group {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .quality-select {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .size-badge {
+      background: var(--bg);
+      color: var(--text-muted);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, var(--success), #059669);
+    }
+
+    .btn-warning {
+      background: linear-gradient(135deg, var(--warning), #d97706);
+    }
+
+    .progress-wrap {
+      display: none;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .progress-bar-bg {
+      height: 8px;
+      background: var(--bg);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      width: 0%;
+      transition: width 0.3s ease;
+      border-radius: 4px;
+    }
+
+    .progress-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .skeleton {
+      background: var(--surface);
+      border-radius: 1rem;
+      overflow: hidden;
+    }
+
+    .skeleton-thumb {
+      height: 180px;
+      background: linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+
+    .skeleton-info {
+      padding: 1.5rem;
+    }
+
+    .skeleton-line {
+      background: linear-gradient(90deg, var(--border) 25%, var(--surface) 50%, var(--border) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 4px;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .info-section {
+      padding: 4rem 0;
+    }
+
+    .bg-alt {
+      background: var(--surface);
+      margin: 0 -2rem;
+      padding: 4rem 2rem;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .section-header h2 {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .section-header p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 2rem;
+    }
+
+    .step-card {
+      background: var(--bg);
+      padding: 2rem;
+      border-radius: 1rem;
+      border: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .step-number {
+      width: 50px;
+      height: 50px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0 auto 1rem;
+    }
+
+    .step-card h3 {
+      margin-bottom: 0.5rem;
+    }
+
+    .step-card p {
+      color: var(--text-muted);
+    }
+
+    .feature-row {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      padding: 1.5rem;
+      background: var(--bg);
+      border-radius: 1rem;
+      border: 1px solid var(--border);
+    }
+
+    .feature-icon {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      padding: 0.75rem;
+      border-radius: 0.75rem;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .feature-text h4 {
+      margin-bottom: 0.5rem;
+    }
+
+    .feature-text p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .platforms-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    .platform-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 0.75rem 1.5rem;
+      border-radius: 2rem;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+
+    .platform-badge:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    footer {
+      text-align: center;
+      padding: 3rem 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .footer-sub {
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    footer a {
+      color: var(--primary);
+    }
+
+    @media (max-width: 768px) {
+      h1 { font-size: 2.5rem; }
+      .nav-links { display: none; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .hero { padding: 6rem 1rem 3rem; }
+      .main-content { padding: 1rem; }
+    }
+
+    .btn-spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .notice-box {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid var(--warning);
+      color: var(--warning);
+      padding: 1rem;
+      border-radius: 0.75rem;
+      margin-bottom: 2rem;
+      text-align: center;
+      display: none;
+    }
+
+    .notice-box.visible {
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -57,18 +609,22 @@
 <header class="hero">
   <div class="hero-content">
     <h1>Download Any Video, <span class="text-gradient">Anywhere</span>.</h1>
-    <p class="hero-subtitle">The fastest and easiest way to download videos from YouTube, TikTok, Twitter, Instagram, and thousands of other sites for free.</p>
+    <p class="hero-subtitle">Advanced browser automation downloads videos from YouTube, TikTok, Instagram, Twitter and 1000+ sites. No API keys needed.</p>
     
-    <div class="search-bar glass-panel">
-      <input type="text" id="searchInput" placeholder="Paste your video link here (e.g. TikTok, Twitter, YouTube)..."/>
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="Search YouTube or paste video link (TikTok, Instagram, Twitter)..."/>
       <span id="urlPill">🔗 URL detected</span>
-      <button id="searchBtn" onclick="handleInput()">Download Now</button>
+      <button id="searchBtn" onclick="handleInput()">Search</button>
     </div>
-    <p class="search-hint" id="searchHint">By using our service you accept our <a href="/terms.html" style="text-decoration: underline; color: inherit;">Terms of Service</a>.</p>
+    <p class="search-hint" id="searchHint">Type to search YouTube, or paste a direct video link from any platform.</p>
   </div>
 </header>
 
 <main class="main-content">
+  <div class="notice-box" id="noticeBox">
+    ⚠️ Browser automation is active. First load may take 5-10 seconds while we launch a secure browser instance.
+  </div>
+  
   <div id="status"></div>
   <div class="spinner" id="spinner"></div>
   <div id="results"></div>
@@ -76,24 +632,24 @@
   <!-- HOW TO SECTION -->
   <section id="how-to" class="info-section">
     <div class="section-header">
-      <h2>How to download online videos?</h2>
-      <p>Save videos in HD quality (MP4) straight to your device in 3 easy steps.</p>
+      <h2>How does it work?</h2>
+      <p>Our advanced browser automation technology downloads videos in 3 simple steps.</p>
     </div>
     <div class="grid-3">
       <div class="step-card">
         <div class="step-number">1</div>
-        <h3>Copy the URL</h3>
-        <p>Go to your favorite platform (YouTube, TikTok, Twitter) and copy the link of the video you wish to download.</p>
+        <h3>Search or Paste URL</h3>
+        <p>Search YouTube or paste a link from TikTok, Instagram, Twitter, Facebook, or any supported platform.</p>
       </div>
       <div class="step-card">
         <div class="step-number">2</div>
-        <h3>Paste the Link</h3>
-        <p>Paste the copied video link into the search box at the top of this page. We'll instantly process the video details.</p>
+        <h3>Browser Automation</h3>
+        <p>We launch a secure Chromium browser that navigates to the video page and extracts the direct download URL.</p>
       </div>
       <div class="step-card">
         <div class="step-number">3</div>
-        <h3>Download Video</h3>
-        <p>Select your preferred video quality (e.g., 720p, 1080p, or Audio) and click the Download button to save it locally.</p>
+        <h3>Instant Download</h3>
+        <p>Get your video in seconds. No waiting, no registration, no API keys required.</p>
       </div>
     </div>
   </section>
@@ -102,43 +658,43 @@
   <section id="features" class="info-section bg-alt">
     <div class="section-header">
       <h2>Why use UniversalSave?</h2>
-      <p>We provide the best tools to keep your media library stocked.</p>
+      <p>Powered by Playwright browser automation for maximum compatibility.</p>
     </div>
     <div class="grid-2">
+      <div class="feature-row">
+        <div class="feature-icon">
+          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+        </div>
+        <div class="feature-text">
+          <h4>Real Browser Technology</h4>
+          <p>We use Playwright to launch actual Chromium browsers that behave exactly like real users, bypassing bot detection.</p>
+        </div>
+      </div>
       <div class="feature-row">
         <div class="feature-icon">
           <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
         </div>
         <div class="feature-text">
-          <h4>Lightning Fast Downloads</h4>
-          <p>Our backend relies on highly optimized streams to ensure you get your files in seconds, without any artificial speed limits.</p>
+          <h4>No API Keys Required</h4>
+          <p>Unlike other services, we don't require YouTube API keys, Cobalt tokens, or paid subscriptions. Completely free.</p>
         </div>
       </div>
       <div class="feature-row">
         <div class="feature-icon">
-          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m0 0v2m0-2h2m-2 0H9m12-4v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2h14a2 2 0 012 2zM9 9V7a3 3 0 016 0v2"></path></svg>
+          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
         </div>
         <div class="feature-text">
-          <h4>100% Safe & Secure</h4>
-          <p>No sketchy pop-ups, no malicious software, and no registration required. Your privacy is totally respected.</p>
+          <h4>Privacy First</h4>
+          <p>We don't store your videos or browsing history. Each request uses a fresh browser instance with no cookies.</p>
         </div>
       </div>
       <div class="feature-row">
         <div class="feature-icon">
-          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
         </div>
         <div class="feature-text">
-          <h4>Works on Any Device</h4>
-          <p>Whether you're using a PC, Mac, Android, or iOS device, our tool operates seamlessly in any modern web browser.</p>
-        </div>
-      </div>
-      <div class="feature-row">
-        <div class="feature-icon">
-          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
-        </div>
-        <div class="feature-text">
-          <h4>High Quality & MP3 Support</h4>
-          <p>Extract crystal-clear audio or download crisp 1080p videos with a single click. Quality is never compromised.</p>
+          <h4>1000+ Sites Supported</h4>
+          <p>YouTube, TikTok, Instagram, Facebook, Twitter, Reddit, SoundCloud, Twitch, Vimeo, and many more platforms.</p>
         </div>
       </div>
     </div>
@@ -148,7 +704,7 @@
   <section id="platforms" class="info-section">
     <div class="section-header">
       <h2>Supported Platforms</h2>
-      <p>We support downloading from over 1,000+ websites globally.</p>
+      <p>Our browser automation works with virtually any video platform.</p>
     </div>
     <div class="platforms-grid">
       <div class="platform-badge">
@@ -171,7 +727,15 @@
         <svg fill="currentColor" width="20" height="20" viewBox="0 0 24 24"><path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z"/></svg>
         Facebook
       </div>
-      <div class="platform-badge" style="border: none; opacity: 0.8; font-weight: 500;">...and 1,000+ more!</div>
+      <div class="platform-badge">
+        <svg fill="currentColor" width="20" height="20" viewBox="0 0 24 24"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249z"/></svg>
+        Reddit
+      </div>
+      <div class="platform-badge">
+        <svg fill="currentColor" width="20" height="20" viewBox="0 0 24 24"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0 1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143-3.428 3.428h-3.429l-3 3V11.143H6.857V1.714h13.714z"/></svg>
+        Twitch
+      </div>
+      <div class="platform-badge" style="border: none; opacity: 0.8; font-weight: 500;">...and 1000+ more!</div>
     </div>
   </section>
 </main>
@@ -189,7 +753,6 @@
   const moonIcon = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
   const sunIcon = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>';
   
-  // Set theme on load (light mode is default)
   const currentTheme = localStorage.getItem('theme') || 'light';
   document.documentElement.setAttribute('data-theme', currentTheme);
   themeIcon.innerHTML = currentTheme === 'dark' ? sunIcon : moonIcon;
@@ -211,6 +774,7 @@
   const pill      = document.getElementById("urlPill");
   const hint      = document.getElementById("searchHint");
   const searchBtn = document.getElementById("searchBtn");
+  const noticeBox = document.getElementById("noticeBox");
 
   input.addEventListener("input", updateMode);
   input.addEventListener("paste", () => setTimeout(updateMode, 0));
@@ -220,11 +784,16 @@
     const isUrl  = isVideoUrl(val);
     pill.classList.toggle("visible", isUrl);
     hint.classList.toggle("url-mode", isUrl);
-    hint.textContent = isUrl
-      ? "✨ Valid Link! Click Download Now to fetch."
-      : "By using our service you accept our Terms of Service.";
-    if (!isUrl) hint.innerHTML = 'By using our service you accept our <a href="/terms.html" style="text-decoration: underline; color: inherit;">Terms of Service</a>.';
-    searchBtn.textContent = isUrl ? "Download Now" : "Search Videos";
+    
+    if (isUrl) {
+      hint.textContent = "✨ Valid Link! Click Download Now to start browser automation.";
+      searchBtn.textContent = "Download Now";
+      noticeBox.classList.add("visible");
+    } else {
+      hint.textContent = "Type to search YouTube, or paste a direct video link from any platform.";
+      searchBtn.textContent = val ? "Search YouTube" : "Search";
+      noticeBox.classList.remove("visible");
+    }
   }
 
   // ── Enter key support ──────────────────────────────────────
@@ -235,17 +804,16 @@
     const val = input.value.trim();
     if (!val) return setStatus("⚠️ Please enter a search query or a video URL.", "error");
     
-    // Auto-scroll to results
     document.getElementById('status').scrollIntoView({ behavior: 'smooth', block: 'center' });
     
     isVideoUrl(val) ? fetchByUrl(val) : search(val);
   }
 
-  // ── Fetch single video by URL ──────────────────────────────
+  // ── Fetch single video by URL (Browser Automation) ───────────
   async function fetchByUrl(url) {
     const btn = document.getElementById("searchBtn");
     btn.disabled = true;
-    setStatus("⏳ Processing your link...", "loading");
+    setStatus("⏳ Launching browser automation... This may take 5-10 seconds.", "loading");
     document.getElementById("spinner").style.display = "block";
     showSkeletons(1);
 
@@ -256,25 +824,31 @@
       document.getElementById("spinner").style.display = "none";
       btn.disabled = false;
 
-      if (data.error) return setStatus(`❌ ${data.error}`, "error");
+      if (data.error) {
+        // Check if it's a Playwright availability error
+        if (data.error.includes("Playwright not installed")) {
+          return setStatus(`❌ ${data.error}. Please contact the administrator.`, "error");
+        }
+        return setStatus(`❌ ${data.error}`, "error");
+      }
 
-      setStatus(`✅ Ready for download`, "success");
+      setStatus(`✅ Browser automation successful! Video ready for download.`, "success");
       renderCards(data);
       loadAllSizes(data);
 
     } catch (err) {
       document.getElementById("spinner").style.display = "none";
       btn.disabled = false;
-      setStatus("❌ Connection failed. Ensure the server is running.", "error");
+      setStatus("❌ Connection failed. Please try again.", "error");
       document.getElementById("results").innerHTML = "";
     }
   }
 
-  // ── Search ─────────────────────────────────────────────────
+  // ── Search YouTube ─────────────────────────────────────────
   async function search(query) {
     const btn = document.getElementById("searchBtn");
     btn.disabled = true;
-    setStatus("⏳ Searching...", "loading");
+    setStatus("⏳ Searching YouTube...", "loading");
     document.getElementById("spinner").style.display = "block";
     showSkeletons(4);
 
@@ -285,17 +859,29 @@
       document.getElementById("spinner").style.display = "none";
       btn.disabled = false;
 
-      if (data.error)        return setStatus(`❌ ${data.error}`, "error");
-      if (data.length === 0) return setStatus("😕 No results found.", "error");
+      if (data.error) return setStatus(`❌ ${data.error}`, "error");
+      if (data.length === 0 || data.message) {
+        if (data.message) {
+          setStatus(data.message, "success");
+          document.getElementById("results").innerHTML = `
+            <div style="grid-column: 1/-1; text-align: center; padding: 2rem;">
+              <p style="color: var(--text-muted); margin-bottom: 1rem;">${data.message}</p>
+              <p style="color: var(--text-muted);">Supported: ${data.supported_platforms.join(', ')}</p>
+            </div>
+          `;
+          return;
+        }
+        return setStatus("😕 No results found.", "error");
+      }
 
-      setStatus(`✅ Found ${data.length} results for "${query}"`, "success");
+      setStatus(`✅ Found ${data.length} results. Click any video to start browser automation.`, "success");
       renderCards(data);
       loadAllSizes(data);
 
     } catch (err) {
       document.getElementById("spinner").style.display = "none";
       btn.disabled = false;
-      setStatus("❌ Connection failed. Ensure the server is running.", "error");
+      setStatus("❌ Connection failed. Please try again.", "error");
       document.getElementById("results").innerHTML = "";
     }
   }
@@ -327,6 +913,10 @@
       const card = document.createElement("div");
       card.className = "card glass-panel";
       card.id = `card-${v.video_id}`;
+      
+      // Show method badge if available (playwright vs invidious)
+      const methodBadge = v.method ? `<span class="tag method">${v.method}</span>` : '';
+      
       card.innerHTML = `
         <img src="${v.thumbnail}" alt="thumbnail"
              onerror="this.src='https://placehold.co/320x180/1e293b/94a3b8?text=Preview+Unavailable'"/>
@@ -335,17 +925,20 @@
           <div class="card-meta">
             ${v.channel ? `<span class="tag">👤 ${escHtml(v.channel)}</span>` : ""}
             ${v.duration ? `<span class="tag">⏱ ${v.duration}</span>` : ""}
+            ${v.platform ? `<span class="tag">📱 ${v.platform}</span>` : ""}
+            ${methodBadge}
           </div>
           
           <div class="card-actions">
             <div class="action-group">
                 <select class="quality-select" id="quality-${v.video_id}">
-                  <option value="best">🏅 High Quality</option>
+                  <option value="best">🏅 Best Quality</option>
+                  <option value="1080p">🎬 1080p HD</option>
                   <option value="720p">📺 720p HD</option>
                   <option value="480p">📱 480p SD</option>
                   <option value="audio">🎵 Audio (MP3)</option>
                 </select>
-                <div class="size-badge loading" id="size-${v.video_id}">Calculating...</div>
+                <div class="size-badge loading" id="size-${v.video_id}">...</div>
             </div>
             
             <button class="btn btn-primary" id="btn-${v.video_id}"
@@ -375,12 +968,10 @@
       const all = await res.json();
 
       videos.forEach(v => {
-        const id_norm = v.url.includes('v=') ? v.url.split('v=')[1].split('&')[0] : v.url;
-        // The backend returns keys based on extracted ID or URL. We'll try to find a match.
-        let sizes = all[v.video_id] || all[v.url] || all[id_norm];
-        
+        const sizes = all[v.video_id] || all[v.url];
         const select = document.getElementById(`quality-${v.video_id}`);
         const badge  = document.getElementById(`size-${v.video_id}`);
+        
         if (!select || !badge) return;
 
         if (sizes) {
@@ -388,7 +979,7 @@
           updateSizeBadge(v.video_id);
           select.addEventListener("change", () => updateSizeBadge(v.video_id));
         } else {
-          badge.textContent = "Unknown Size";
+          badge.textContent = "Unknown";
           badge.classList.remove("loading");
         }
       });
@@ -397,7 +988,7 @@
       videos.forEach(v => {
         const badge = document.getElementById(`size-${v.video_id}`);
         if (badge) {
-          badge.textContent = "Size Unavailable";
+          badge.textContent = "Unknown";
           badge.classList.remove("loading");
         }
       });
@@ -408,17 +999,13 @@
     const select  = document.getElementById(`quality-${videoId}`);
     const badge   = document.getElementById(`size-${videoId}`);
     const quality = select.value;
-    const mb      = (select._sizes || {})[quality];
+    const size    = (select._sizes || {})[quality];
 
     badge.classList.remove("loading");
-    if (mb) {
-      badge.textContent = `~${mb} MB`;
-    } else {
-      badge.textContent = "Unknown Size";
-    }
+    badge.textContent = size || "Unknown";
   }
 
-  // ── Download ───────────────────────────────────────────────
+  // ── Download (Fresh Browser Session) ────────────────────────
   async function startDownload(videoId, url) {
     const quality = document.getElementById(`quality-${videoId}`).value;
     const btn     = document.getElementById(`btn-${videoId}`);
@@ -426,55 +1013,58 @@
     const label   = document.getElementById(`progress-label-${videoId}`);
     const fill    = document.getElementById(`progress-fill-${videoId}`);
 
-    btn.disabled        = true;
-    btn.innerHTML       = '<div class="btn-spinner"></div> Starting...';
-    wrap.style.display  = "flex";
-    label.textContent   = "Connecting to servers...";
-    label.style.color   = "#38bdf8";
-    fill.style.width    = "0%";
+    btn.disabled       = true;
+    btn.innerHTML      = '<div class="btn-spinner"></div> Starting browser...';
+    wrap.style.display = "flex";
+    label.textContent  = "Launching secure browser instance...";
+    label.style.color  = "#38bdf8";
+    fill.style.width   = "10%";
 
-    await fetch(`/download?id=${videoId}&url=${encodeURIComponent(url)}&quality=${quality}`);
-    pollProgress(videoId, btn);
-  }
+    try {
+      const res = await fetch(`/download?id=${videoId}&url=${encodeURIComponent(url)}&quality=${quality}`);
+      const data = await res.json();
 
-  function pollProgress(videoId, btn) {
-    const interval = setInterval(async () => {
-      try {
-        const res   = await fetch(`/progress?id=${videoId}`);
-        const data  = await res.json();
-        const fill  = document.getElementById(`progress-fill-${videoId}`);
-        const label = document.getElementById(`progress-label-${videoId}`);
-
-        fill.style.width = `${data.progress || 0}%`;
-
-        if (data.status === "downloading") {
-          const pct       = Math.round(data.progress || 0);
-          btn.innerHTML   = `<div class="btn-spinner"></div> ${pct}%`;
-          label.textContent = `Downloading... ${pct}%`;
-
-        } else if (data.status === "finished") {
-          clearInterval(interval);
-          btn.innerHTML   = "✅ Download Complete";
-          btn.classList.add("btn-success");
-          btn.disabled    = false;
-          fill.style.width  = "100%";
-          fill.style.background = "linear-gradient(90deg, #10b981, #34d399)";
-          label.textContent = `✅ Saved to ~/Downloads/UniversalVideoDownloader/${data.filename}`;
-          label.style.color = "#10b981";
-
-        } else if (data.status === "error") {
-          clearInterval(interval);
-          btn.innerHTML   = "❌ Retry Download";
-          btn.classList.remove("btn-success");
-          btn.disabled    = false;
-          label.textContent = `❌ Download failed: ${data.error}`;
-          label.style.color = "#ef4444";
-          fill.style.background = "#ef4444";
-        }
-      } catch {
-        // Just wait for next tick
+      if (data.error || data.status === "error") {
+        btn.innerHTML = "❌ Failed";
+        btn.disabled = false;
+        label.textContent = data.error || "Failed to get download link";
+        label.style.color = "#ef4444";
+        fill.style.width = "100%";
+        fill.style.background = "#ef4444";
+        return;
       }
-    }, 1000);
+
+      if (data.download_url) {
+        fill.style.width = "100%";
+        fill.style.background = "linear-gradient(90deg, #10b981, #34d399)";
+        btn.innerHTML = "✅ Starting Download...";
+        label.textContent = "Redirecting to download...";
+        label.style.color = "#10b981";
+
+        // Open download in new tab
+        window.open(data.download_url, '_blank');
+
+        // Reset button after delay
+        setTimeout(() => {
+          btn.innerHTML = `
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+            </svg>
+            Download Again
+          `;
+          btn.disabled = false;
+          btn.classList.add("btn-success");
+          label.textContent = "✅ Download started in new tab!";
+        }, 2000);
+      }
+
+    } catch (err) {
+      btn.innerHTML = "❌ Retry";
+      btn.disabled = false;
+      label.textContent = "Connection failed";
+      label.style.color = "#ef4444";
+      fill.style.background = "#ef4444";
+    }
   }
 
   // ── Helpers ────────────────────────────────────────────────
@@ -485,6 +1075,7 @@
   }
 
   function escHtml(str) {
+    if (!str) return "";
     return str.replace(/&/g,"&amp;").replace(/</g,"&lt;")
               .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
