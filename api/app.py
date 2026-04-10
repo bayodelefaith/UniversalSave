@@ -1,6 +1,7 @@
 import os
 import re
 import asyncio
+import subprocess
 import requests
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, FileResponse
@@ -8,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from youtubesearchpython import VideosSearch
 import uvicorn
 
-# Try to import playwright, fallback to requests if not available
+# Try to import playwright
 try:
     from playwright.async_api import async_playwright
     PLAYWRIGHT_AVAILABLE = True
@@ -26,7 +27,9 @@ app.add_middleware(
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Invidious fallback instances
+# Set Playwright browsers path for Render
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/.cache/ms-playwright"
+
 INVIDIOUS_INSTANCES = [
     "https://y.com.sb",
     "https://vid.puffyan.us", 
@@ -73,24 +76,44 @@ def get_platform(url: str) -> tuple:
             return platform, None, config['thumbnail']("unknown")
     return 'unknown', None, "https://placehold.co/320x180/1e293b/94a3b8?text=Video"
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  PLAYWRIGHT BROWSER AUTOMATION
-# ══════════════════════════════════════════════════════════════════════════════
+def find_chromium_executable():
+    """
+    Find the actual Chromium executable path.
+    Playwright 1.58+ uses chromium-headless-shell with different paths.
+    """
+    possible_paths = [
+        # Headless shell (new in 1.58+)
+        "/opt/render/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell",
+        "/opt/render/.cache/ms-playwright/chromium_headless_shell-1208/chrome-linux64/chrome-headless-shell",
+        # Regular Chromium
+        "/opt/render/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
+        "/opt/render/.cache/ms-playwright/chromium-1208/chrome-linux/chrome",
+        # Fallback to system chromium
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            print(f"✅ Found Chromium at: {path}")
+            return path
+    
+    # If not found, return None and let Playwright try to find it
+    return None
 
 async def scrape_with_playwright(url: str, platform: str) -> dict:
-    """
-    Use Playwright to open a real browser and extract video info
-    This mimics real user behavior and bypasses bot detection
-    """
+    """Use Playwright to extract video info"""
     if not PLAYWRIGHT_AVAILABLE:
         return {"error": "Playwright not installed"}
     
+    chromium_path = find_chromium_executable()
+    
     try:
         async with async_playwright() as p:
-            # Launch browser with stealth options
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
+            launch_options = {
+                "headless": True,
+                "args": [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
@@ -100,10 +123,28 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
                     '--disable-gpu',
                     '--disable-web-security',
                     '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-blink-features=AutomationControlled',
                 ]
-            )
+            }
             
-            # Create context with realistic user agent
+            # Use explicit path if found
+            if chromium_path:
+                launch_options["executable_path"] = chromium_path
+            
+            try:
+                browser = await p.chromium.launch(**launch_options)
+            except Exception as launch_error:
+                error_msg = str(launch_error)
+                print(f"❌ Browser launch failed: {error_msg}")
+                
+                # If executable not found, try without specifying path
+                if "Executable doesn't exist" in error_msg and chromium_path:
+                    print("🔄 Retrying without explicit executable_path...")
+                    del launch_options["executable_path"]
+                    browser = await p.chromium.launch(**launch_options)
+                else:
+                    raise launch_error
+            
             context = await browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 viewport={'width': 1920, 'height': 1080},
@@ -111,48 +152,40 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
                 timezone_id='America/New_York',
             )
             
+            await context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                window.chrome = { runtime: {} };
+            """)
+            
             page = await context.new_page()
-            
-            # Navigate to the video URL
             await page.goto(url, wait_until='networkidle', timeout=30000)
-            
-            # Wait a bit to seem human-like
             await asyncio.sleep(2)
             
             result = {}
             
             if platform == 'youtube':
-                # Extract YouTube video info
                 result = await page.evaluate('''() => {
                     const title = document.querySelector('h1.ytd-watch-metadata yt-formatted-string')?.textContent || 
                                  document.querySelector('h1.title.ytd-video-primary-info-renderer')?.textContent ||
                                  document.querySelector('h1')?.textContent || 'Unknown';
-                    
                     const channel = document.querySelector('ytd-channel-name a')?.textContent || 
-                                   document.querySelector('.ytd-channel-name a')?.textContent ||
-                                   document.querySelector('[class*="channel"] a')?.textContent || 'Unknown';
-                    
-                    // Try to find video URL in page source or network
+                                   document.querySelector('.ytd-channel-name a')?.textContent || 'Unknown';
                     const html = document.documentElement.innerHTML;
-                    const match = html.match(/"url":"(https:\/\/[^"]*googlevideo\.com[^"]*)"/);
-                    const videoUrl = match ? match[1].replace(/\\\\u0026/g, '&') : null;
-                    
+                    const match = html.match(/"url":"(https:\\/\\/[^"]*googlevideo\\.com[^"]*)"/);
                     return {
                         title: title.trim(),
                         channel: channel.trim(),
-                        videoUrl: videoUrl,
-                        pageUrl: window.location.href
+                        videoUrl: match ? match[1].replace(/\\\\u0026/g, '&') : null,
                     };
                 }''')
                 
-                # If we didn't get direct URL, try alternative method
                 if not result.get('videoUrl'):
-                    # Look for ytInitialPlayerResponse
                     player_response = await page.evaluate('''() => {
                         const scripts = Array.from(document.querySelectorAll('script'));
                         const playerScript = scripts.find(s => s.textContent.includes('ytInitialPlayerResponse'));
                         if (playerScript) {
-                            const match = playerScript.textContent.match(/ytInitialPlayerResponse\s*=\s*({.+?});/);
+                            const match = playerScript.textContent.match(/ytInitialPlayerResponse\\s*=\\s*({.+?});/);
                             if (match) return JSON.parse(match[1]);
                         }
                         return window.ytInitialPlayerResponse;
@@ -161,59 +194,21 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
                     if player_response and 'streamingData' in player_response:
                         formats = player_response['streamingData'].get('formats', [])
                         if formats:
-                            # Get best quality MP4
-                            best_format = None
-                            for fmt in formats:
-                                if 'mp4' in fmt.get('mimeType', '').lower():
-                                    if not best_format or fmt.get('height', 0) > best_format.get('height', 0):
-                                        best_format = fmt
-                            
-                            if best_format:
-                                result['videoUrl'] = best_format['url']
-                                result['quality'] = f"{best_format.get('height', 'unknown')}p"
+                            best_format = max(formats, key=lambda x: x.get('height', 0))
+                            result['videoUrl'] = best_format['url']
+                            result['quality'] = f"{best_format.get('height', 'unknown')}p"
             
             elif platform == 'tiktok':
-                # Extract TikTok video info
                 result = await page.evaluate('''() => {
-                    const title = document.querySelector('[data-e2e="video-desc"]')?.textContent || 
-                                 document.querySelector('h1')?.textContent || 'TikTok Video';
-                    
-                    const author = document.querySelector('[data-e2e="video-author-username"]')?.textContent ||
-                                   document.querySelector('[class*="author"]')?.textContent || 'Unknown';
-                    
-                    // Look for video element
+                    const title = document.querySelector('[data-e2e="video-desc"]')?.textContent || 'TikTok Video';
+                    const author = document.querySelector('[data-e2e="video-author-username"]')?.textContent || 'Unknown';
                     const videoEl = document.querySelector('video');
-                    const videoUrl = videoEl?.src || null;
-                    
                     return {
                         title: title.trim(),
                         channel: author.trim(),
-                        videoUrl: videoUrl,
-                        pageUrl: window.location.href
+                        videoUrl: videoEl?.src || null,
                     };
                 }''')
-                
-                # Try to get from SSR data
-                if not result.get('videoUrl'):
-                    ssr_data = await page.evaluate('''() => {
-                        const scripts = Array.from(document.querySelectorAll('script'));
-                        const ssrScript = scripts.find(s => s.id === 'RENDER_DATA' || s.textContent.includes('SSR'));
-                        return ssrScript ? ssrScript.textContent : null;
-                    }''')
-                    
-                    if ssr_data:
-                        # Parse SSR JSON
-                        try:
-                            import json
-                            # TikTok embeds data in script tags
-                            match = re.search(r'<script[^>]*>window\._SSR_HYDRATED_DATA\s*=\s*({.+?})<\/script>', await page.content())
-                            if match:
-                                data = json.loads(match.group(1))
-                                video_info = data.get('videoInfo', {}).get('video', {})
-                                result['videoUrl'] = video_info.get('playAddr', '')
-                                result['title'] = video_info.get('desc', 'TikTok Video')
-                        except:
-                            pass
             
             await browser.close()
             
@@ -230,11 +225,9 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
                 return {"error": f"Could not extract video URL from {platform}"}
                 
     except Exception as e:
-        return {"error": f"Browser automation failed: {str(e)}"}
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  FALLBACK METHODS
-# ══════════════════════════════════════════════════════════════════════════════
+        error_msg = str(e)
+        print(f"❌ Playwright error: {error_msg}")
+        return {"error": f"Browser automation failed: {error_msg}"}
 
 def fetch_from_invidious(video_id: str) -> dict:
     """Fallback to Invidious API"""
@@ -245,7 +238,7 @@ def fetch_from_invidious(video_id: str) -> dict:
                 data = res.json()
                 formats = data.get("formatStreams", [])
                 if formats:
-                    best = formats[-1]  # Highest quality
+                    best = formats[-1]
                     return {
                         "status": "success",
                         "title": data.get("title", "YouTube Video"),
@@ -258,10 +251,6 @@ def fetch_from_invidious(video_id: str) -> dict:
         except:
             continue
     return {"error": "Invidious failed"}
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  ROUTES
-# ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -277,7 +266,6 @@ def read_terms():
 
 @app.get("/search")
 async def search_videos(q: str = Query(...)):
-    """Search YouTube using youtube-search-python"""
     try:
         search = VideosSearch(q, limit=10)
         results = search.result()["result"]
@@ -303,17 +291,12 @@ async def search_videos(q: str = Query(...)):
 
 @app.get("/fetch_url")
 async def fetch_url(url: str = Query(...)):
-    """
-    Fetch video info using multiple methods:
-    1. Try Playwright browser automation (most reliable)
-    2. Fallback to Invidious API
-    """
     if not url.startswith(('http://', 'https://')):
         return {"error": "Invalid URL"}
     
     platform, video_id, thumbnail = get_platform(url)
     
-    # Try Playwright first for YouTube and TikTok
+    # Try Playwright first
     if PLAYWRIGHT_AVAILABLE and platform in ['youtube', 'tiktok']:
         result = await scrape_with_playwright(url, platform)
         
@@ -332,7 +315,6 @@ async def fetch_url(url: str = Query(...)):
                 "method": "playwright"
             }]
         
-        # If Playwright fails, log it and try fallback
         print(f"Playwright failed: {result.get('error')}, trying fallback...")
     
     # Fallback to Invidious for YouTube
@@ -354,12 +336,10 @@ async def fetch_url(url: str = Query(...)):
                 "method": "invidious"
             }]
     
-    # For other platforms or if all fails
-    return {"error": f"Could not fetch video from {platform}. Try a different URL or platform."}
+    return {"error": f"Could not fetch video from {platform}. All methods failed."}
 
 @app.get("/sizes")
 async def video_sizes(urls: str = Query(...)):
-    """Return estimated file sizes"""
     url_list = [u.strip() for u in urls.split(",") if u.strip()]
     results = {}
     
@@ -380,12 +360,8 @@ async def video_sizes(urls: str = Query(...)):
 
 @app.get("/download")
 async def download_video(id: str, url: str, quality: str = "best"):
-    """
-    Get fresh download URL (bypasses expiration)
-    """
     platform, video_id, _ = get_platform(url)
     
-    # Try to get fresh URL
     if PLAYWRIGHT_AVAILABLE and platform in ['youtube', 'tiktok']:
         result = await scrape_with_playwright(url, platform)
         if result.get("status") == "success":
@@ -397,10 +373,9 @@ async def download_video(id: str, url: str, quality: str = "best"):
                 "type": "direct"
             }
     
-    # Fallback to stored URL from fetch_url (might be expired)
     return {
         "status": "error",
-        "error": "Could not generate fresh download URL. Please re-fetch the video."
+        "error": "Could not generate download URL. Browser automation failed."
     }
 
 @app.get("/progress")
@@ -409,9 +384,14 @@ def get_progress(id: str):
 
 @app.get("/health")
 def health_check():
+    chromium_path = find_chromium_executable()
+    
     return {
         "status": "ok",
         "playwright_available": PLAYWRIGHT_AVAILABLE,
+        "chromium_found": chromium_path is not None,
+        "chromium_path": chromium_path,
+        "playwright_browsers_path": os.environ.get("PLAYWRIGHT_BROWSERS_PATH"),
         "supported_platforms": list(PLATFORM_PATTERNS.keys())
     }
 
