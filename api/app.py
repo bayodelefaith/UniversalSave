@@ -1,6 +1,8 @@
 import os
 import re
 import asyncio
+import glob
+import subprocess
 import requests
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, FileResponse
@@ -15,13 +17,6 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
-# Try to import chromium-binary for serverless
-try:
-    import chromium_binary
-    CHROMIUM_BINARY_AVAILABLE = True
-except ImportError:
-    CHROMIUM_BINARY_AVAILABLE = False
-
 app = FastAPI()
 
 app.add_middleware(
@@ -33,7 +28,7 @@ app.add_middleware(
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Set Playwright browsers path
+# Set Playwright browsers path for Render
 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/.cache/ms-playwright"
 
 INVIDIOUS_INSTANCES = [
@@ -72,6 +67,7 @@ PLATFORM_PATTERNS = {
 }
 
 def get_platform(url: str) -> tuple:
+    """Detect platform and extract video ID from URL"""
     url_lower = url.lower()
     for platform, config in PLATFORM_PATTERNS.items():
         if any(domain in url_lower for domain in config['domains']):
@@ -84,51 +80,98 @@ def get_platform(url: str) -> tuple:
 
 def find_chromium_executable():
     """
-    Find Chromium executable using multiple methods.
-    Priority: chromium-binary > playwright headless shell > playwright chromium > system chromium
+    Find Chromium executable - updated for Playwright 1.58+ headless shell structure
     """
-    # Method 1: Use chromium-binary package (most reliable for serverless)
-    if CHROMIUM_BINARY_AVAILABLE:
+    # Base directories to search
+    base_paths = [
+        "/opt/render/.cache/ms-playwright",
+        os.path.expanduser("~/.cache/ms-playwright"),
+        "/home/render/.cache/ms-playwright",
+        "/tmp/playwright-browsers",
+    ]
+    
+    # 1. Check for headless shell first (Playwright 1.58+ default)
+    for base in base_paths:
+        if not os.path.exists(base):
+            continue
+            
+        # Look for chromium_headless_shell directories
         try:
-            chromium_path = chromium_binary.chromium_path
-            if chromium_path and os.path.exists(chromium_path):
-                print(f"✅ Using chromium-binary: {chromium_path}")
-                return chromium_path
-        except:
-            pass
+            for item in os.listdir(base):
+                if "headless_shell" in item.lower() or "headless-shell" in item.lower():
+                    headless_dir = os.path.join(base, item)
+                    # Check for chrome-headless-shell-linux64 subdirectory
+                    linux64_dir = os.path.join(headless_dir, "chrome-headless-shell-linux64")
+                    if os.path.exists(linux64_dir):
+                        executable = os.path.join(linux64_dir, "chrome-headless-shell")
+                        if os.path.exists(executable):
+                            print(f"✅ Found headless shell: {executable}")
+                            return executable
+                    
+                    # Check direct subdirectory
+                    for subdir in ["chrome-linux64", "chrome-linux"]:
+                        subdir_path = os.path.join(headless_dir, subdir)
+                        if os.path.exists(subdir_path):
+                            for exe_name in ["chrome-headless-shell", "chrome"]:
+                                executable = os.path.join(subdir_path, exe_name)
+                                if os.path.exists(executable):
+                                    print(f"✅ Found headless shell: {executable}")
+                                    return executable
+        except Exception as e:
+            print(f"⚠️ Error searching {base}: {e}")
     
-    # Method 2: Playwright headless shell (1.58+)
-    headless_paths = [
-        "/opt/render/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell",
-        "/opt/render/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell",
-        os.path.expanduser("~/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell"),
-        os.path.expanduser("~/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"),
-    ]
+    # 2. Check for regular Chromium installations
+    for base in base_paths:
+        if not os.path.exists(base):
+            continue
+            
+        try:
+            for item in os.listdir(base):
+                if item.startswith("chromium-") and "headless" not in item.lower():
+                    chromium_dir = os.path.join(base, item)
+                    for subdir in ["chrome-linux64", "chrome-linux"]:
+                        subdir_path = os.path.join(chromium_dir, subdir)
+                        if os.path.exists(subdir_path):
+                            executable = os.path.join(subdir_path, "chrome")
+                            if os.path.exists(executable):
+                                print(f"✅ Found regular Chromium: {executable}")
+                                return executable
+        except Exception as e:
+            print(f"⚠️ Error searching {base}: {e}")
     
-    for path in headless_paths:
-        if os.path.exists(path):
-            print(f"✅ Found Playwright headless shell: {path}")
-            return path
+    # 3. Use glob to find any chrome executable
+    for base in base_paths:
+        if not os.path.exists(base):
+            continue
+            
+        try:
+            pattern = os.path.join(base, "**", "chrome*")
+            matches = glob.glob(pattern, recursive=True)
+            for match in matches:
+                # Skip .zip, .so, and other non-executable files
+                if os.path.isfile(match) and not match.endswith(('.zip', '.so', '.tar.gz')):
+                    # Check if executable
+                    if os.access(match, os.X_OK):
+                        print(f"✅ Found via glob: {match}")
+                        return match
+                    # Try to make executable
+                    try:
+                        os.chmod(match, 0o755)
+                        if os.access(match, os.X_OK):
+                            print(f"✅ Found via glob (fixed permissions): {match}")
+                            return match
+                    except:
+                        pass
+        except Exception as e:
+            print(f"⚠️ Glob error in {base}: {e}")
     
-    # Method 3: Regular Playwright Chromium
-    chromium_paths = [
-        "/opt/render/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
-        "/opt/render/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome",
-        os.path.expanduser("~/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome"),
-        os.path.expanduser("~/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome"),
-    ]
-    
-    for path in chromium_paths:
-        if os.path.exists(path):
-            print(f"✅ Found Playwright Chromium: {path}")
-            return path
-    
-    # Method 4: System Chromium
+    # 4. Check system paths
     system_paths = [
         "/usr/bin/chromium",
         "/usr/bin/chromium-browser",
         "/usr/bin/google-chrome",
         "/usr/bin/google-chrome-stable",
+        "/usr/bin/chrome",
     ]
     
     for path in system_paths:
@@ -136,13 +179,22 @@ def find_chromium_executable():
             print(f"✅ Found system Chromium: {path}")
             return path
     
-    # Method 5: Try to find any chromium in PATH
+    # 5. Try to find in PATH
     try:
-        import shutil
-        chromium_in_path = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
-        if chromium_in_path:
-            print(f"✅ Found Chromium in PATH: {chromium_in_path}")
-            return chromium_in_path
+        result = subprocess.run(["which", "chromium"], capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            path = result.stdout.strip()
+            print(f"✅ Found in PATH: {path}")
+            return path
+    except:
+        pass
+    
+    try:
+        result = subprocess.run(["which", "google-chrome"], capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            path = result.stdout.strip()
+            print(f"✅ Found in PATH: {path}")
+            return path
     except:
         pass
     
@@ -157,7 +209,7 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
     chromium_path = find_chromium_executable()
     
     if not chromium_path:
-        return {"error": "Chromium not found. Please install chromium-binary or run: python -m playwright install chromium"}
+        return {"error": "Chromium not found. Please check installation."}
     
     try:
         async with async_playwright() as p:
@@ -177,12 +229,12 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
                 ]
             }
             
-            # Use explicit path
+            # Use explicit executable path
             launch_options["executable_path"] = chromium_path
             
-            # Check if using headless shell (new in 1.58+)
-            if "headless_shell" in chromium_path or "headless-shell" in chromium_path:
-                print("🚀 Using Chromium Headless Shell (optimized for serverless)")
+            # Log which browser we're using
+            if "headless" in chromium_path.lower():
+                print("🚀 Using Chromium Headless Shell (optimized)")
             else:
                 print("🚀 Using regular Chromium")
             
@@ -207,14 +259,13 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
             
             page = await context.new_page()
             
-            # Navigate with longer timeout for slow loading
+            # Navigate with timeout handling
             try:
                 await page.goto(url, wait_until='networkidle', timeout=45000)
             except:
-                # Fallback to domcontentloaded if networkidle times out
                 await page.goto(url, wait_until='domcontentloaded', timeout=30000)
             
-            await asyncio.sleep(3)  # Wait for JS to execute
+            await asyncio.sleep(3)
             
             result = {}
             
@@ -235,7 +286,6 @@ async def scrape_with_playwright(url: str, platform: str) -> dict:
                 }''')
                 
                 if not result.get('videoUrl'):
-                    # Try ytInitialPlayerResponse
                     player_response = await page.evaluate('''() => {
                         const scripts = Array.from(document.querySelectorAll('script'));
                         const playerScript = scripts.find(s => s.textContent.includes('ytInitialPlayerResponse'));
@@ -320,6 +370,7 @@ def read_terms():
 
 @app.get("/search")
 async def search_videos(q: str = Query(...)):
+    """Search YouTube using youtube-search-python"""
     try:
         search = VideosSearch(q, limit=10)
         results = search.result()["result"]
@@ -345,12 +396,13 @@ async def search_videos(q: str = Query(...)):
 
 @app.get("/fetch_url")
 async def fetch_url(url: str = Query(...)):
+    """Fetch video info using Playwright or fallback"""
     if not url.startswith(('http://', 'https://')):
-        return {"error": "Invalid URL"}
+        return {"error": "Invalid URL. Must start with http:// or https://"}
     
     platform, video_id, thumbnail = get_platform(url)
     
-    # Try Playwright first
+    # Try Playwright first for YouTube and TikTok
     if PLAYWRIGHT_AVAILABLE and platform in ['youtube', 'tiktok']:
         result = await scrape_with_playwright(url, platform)
         
@@ -394,6 +446,7 @@ async def fetch_url(url: str = Query(...)):
 
 @app.get("/sizes")
 async def video_sizes(urls: str = Query(...)):
+    """Return estimated file sizes"""
     url_list = [u.strip() for u in urls.split(",") if u.strip()]
     results = {}
     
@@ -414,6 +467,7 @@ async def video_sizes(urls: str = Query(...)):
 
 @app.get("/download")
 async def download_video(id: str, url: str, quality: str = "best"):
+    """Generate fresh download URL"""
     platform, video_id, _ = get_platform(url)
     
     if PLAYWRIGHT_AVAILABLE and platform in ['youtube', 'tiktok']:
@@ -438,31 +492,83 @@ def get_progress(id: str):
 
 @app.get("/health")
 def health_check():
+    """Check system health"""
     chromium_path = find_chromium_executable()
     
-    # List all files in playwright cache for debugging
-    cache_files = []
-    try:
-        import glob
-        patterns = [
-            "/opt/render/.cache/ms-playwright/**/chrome*",
-            os.path.expanduser("~/.cache/ms-playwright/**/chrome*"),
-        ]
-        for pattern in patterns:
-            cache_files.extend(glob.glob(pattern, recursive=True))
-    except:
-        pass
+    # Check cache directory structure
+    cache_info = {}
+    for base in ["/opt/render/.cache/ms-playwright", os.path.expanduser("~/.cache/ms-playwright")]:
+        if os.path.exists(base):
+            try:
+                cache_info[base] = os.listdir(base)
+            except Exception as e:
+                cache_info[base] = f"Error: {str(e)}"
+        else:
+            cache_info[base] = "Not found"
     
     return {
         "status": "ok",
         "playwright_available": PLAYWRIGHT_AVAILABLE,
-        "chromium_binary_available": CHROMIUM_BINARY_AVAILABLE,
         "chromium_found": chromium_path is not None,
         "chromium_path": chromium_path,
         "playwright_browsers_path": os.environ.get("PLAYWRIGHT_BROWSERS_PATH"),
-        "cache_dir_listing": cache_files[:10],  # First 10 matches
+        "cache_directories": cache_info,
         "supported_platforms": list(PLATFORM_PATTERNS.keys())
     }
+
+@app.get("/debug/chromium")
+def debug_chromium():
+    """Debug endpoint to inspect Chromium installation"""
+    import glob
+    
+    results = {
+        "searched_paths": [],
+        "found_executables": [],
+        "cache_contents": {},
+    }
+    
+    # Search all possible locations
+    base_paths = [
+        "/opt/render/.cache/ms-playwright",
+        os.path.expanduser("~/.cache/ms-playwright"),
+        "/home/render/.cache/ms-playwright",
+        "/tmp/playwright-browsers",
+    ]
+    
+    for base in base_paths:
+        results["searched_paths"].append(base)
+        
+        if not os.path.exists(base):
+            results["cache_contents"][base] = "Directory does not exist"
+            continue
+        
+        try:
+            items = os.listdir(base)
+            results["cache_contents"][base] = items
+            
+            # Look for chrome executables
+            for pattern in ["**/chrome*", "**/headless*"]:
+                full_pattern = os.path.join(base, pattern)
+                matches = glob.glob(full_pattern, recursive=True)
+                for match in matches:
+                    if os.path.isfile(match):
+                        is_executable = os.access(match, os.X_OK)
+                        results["found_executables"].append({
+                            "path": match,
+                            "executable": is_executable,
+                            "size": os.path.getsize(match) if is_executable else None
+                        })
+        except Exception as e:
+            results["cache_contents"][base] = f"Error: {str(e)}"
+    
+    # Also check which command
+    try:
+        which_result = subprocess.run(["which", "chromium"], capture_output=True, text=True)
+        results["which_chromium"] = which_result.stdout.strip() if which_result.returncode == 0 else "Not in PATH"
+    except:
+        results["which_chromium"] = "which command failed"
+    
+    return results
 
 if __name__ == "__main__":
     uvicorn.run("api.app:app", host="0.0.0.0", port=8000, reload=True)
